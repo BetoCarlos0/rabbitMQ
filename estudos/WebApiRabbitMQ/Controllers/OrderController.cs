@@ -15,64 +15,61 @@ namespace WebApiRabbitMQ.Controllers
     [ApiController]
     public class OrderController : ControllerBase
     {
-        private readonly ILogger<OrderController> _looger;
 
-        public OrderController(ILogger<OrderController> looger)
+        [HttpPost("{qnt}")]
+        public IActionResult InsertOrder(int qnt)
         {
-            _looger = looger;
-        }
-
-        [HttpGet]
-        public IActionResult InsertOrder()
-        {
-            Publisher();
+            Publisher(qnt);
 
             return Ok();
         }
 
-        private void Publisher()
+        private void Publisher(int qnt)
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
-            using (var connection = factory.CreateConnection())
-            {
-                var queueName = "order";
+            var manualResetevent = new ManualResetEvent(false);
 
-                var channel1 = CreateChannel(connection);
-                var channel2 = CreateChannel(connection);
+            manualResetevent.Reset();
 
-                BuildPublishers(channel1, queueName, "Produtor A");
-                BuildPublishers(channel2, queueName, "Produtor B");
-            }
+            using var connection = factory.CreateConnection();
+            var queueName = "orderQueue";
+
+            var channel1 = CreateChannel(connection, queueName);
+            BuildPublishers(qnt, channel1, queueName, "Produtor A", manualResetevent);
+
+            //manualResetevent.WaitOne();
         }
 
         // -- services
-        private IModel CreateChannel(IConnection connection)
+        private IModel CreateChannel(IConnection connection, string queueName)
         {
             var channel = connection.CreateModel();
+
+            channel.QueueDeclare(queue: queueName, durable: false, exclusive: false, autoDelete: false, arguments: null);
 
             return channel;
         }
 
-        private void BuildPublishers(IModel channel, string queue, string publisherName)
+        private void BuildPublishers(int qnt, IModel channel, string queue, string publisherName, ManualResetEvent manualResetEvent)
         {
             Task.Run(() =>
             {
                 int count = 0;
 
-                channel.QueueDeclare(queue: "orderQueue",
-                                         durable: false,
-                                         exclusive: false,
-                                         autoDelete: false,
-                                         arguments: null);
-
-                while (true)
+                try
                 {
-                    string message = $"OrderNumber: {count++}";
-                    var body = Encoding.UTF8.GetBytes(message);
+                    for (int i = 0; i < qnt; i++)
+                    {
+                        string message = $"OrderNumber: {count++} de {publisherName}";
+                        var body = Encoding.UTF8.GetBytes(message);
 
-                    channel.BasicPublish("", queue, null, body);
-
-                    Thread.Sleep(1000);
+                        channel.BasicPublish("", queue, null, body);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    manualResetEvent.Set();
+                    //return BadRequest(ex);
                 }
             });
         }
