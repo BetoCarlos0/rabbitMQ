@@ -22,8 +22,8 @@ namespace Receive
                                     arguments: null);
 
 
-            BuildWorker(channel, $"Worker A", queueName);
-            BuildWorker(channel, $"Worker B", queueName);
+            BuildWorker(channel, $"Worker A", "order");
+            BuildWorker(channel, $"Worker B", "finance_order");
 
             Console.ReadLine();            
         }

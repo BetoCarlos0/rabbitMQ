@@ -16,15 +16,15 @@ namespace WebApiRabbitMQ.Controllers
     public class OrderController : ControllerBase
     {
 
-        [HttpPost("{qnt}")]
-        public async Task<IActionResult> InsertOrder(int qnt)
+        [HttpGet]
+        public async Task<IActionResult> InsertOrder()
         {
-            await Publisher(qnt);
+            await Publisher();
 
             return Ok();
         }
 
-        private Task Publisher(int qnt)
+        private async Task Publisher()
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
             var manualResetevent = new ManualResetEvent(false);
@@ -32,13 +32,13 @@ namespace WebApiRabbitMQ.Controllers
             manualResetevent.Reset();
 
             using var connection = factory.CreateConnection();
-            var queueName = "orderQueue";
+            var queueName = "order";
 
             var channel1 = SetupChannel(connection);
-            BuildPublishers(qnt, channel1, queueName, "Produtor A", manualResetevent);
+            await BuildPublishers(channel1, queueName, "Produtor A", manualResetevent);
 
             //manualResetevent.WaitOne();
-            return Task.CompletedTask;
+            //return Task.CompletedTask;
         }
 
         // -- services
@@ -47,40 +47,41 @@ namespace WebApiRabbitMQ.Controllers
             var channel = connection.CreateModel();
 
             channel.QueueDeclare(queue: "order", durable: false, exclusive: false, autoDelete: false, arguments: null);
-            channel.QueueDeclare(queue: "logs", durable: false, exclusive: false, autoDelete: false, arguments: null);
             channel.QueueDeclare(queue: "finance_order", durable: false, exclusive: false, autoDelete: false, arguments: null);
 
-            channel.ExchangeDeclare("order", "fanout");
+            channel.ExchangeDeclare("order", "direct");
 
-            channel.QueueBind("order", "order", "");
-            channel.QueueBind("logs", "order", "");
-            channel.QueueBind("finance_order", "order", "");
+            channel.QueueBind("order", "order", "order_new");
+            channel.QueueBind("order", "order", "order_upd");
+            channel.QueueBind("finance_order", "order", "order_new");
 
             return channel;
         }
 
-        private void BuildPublishers(int qnt, IModel channel, string queue, string publisherName, ManualResetEvent manualResetEvent)
+        private async Task BuildPublishers(IModel channel, string queue, string publisherName, ManualResetEvent manualResetEvent)
         {
-            Task.Run(() =>
+            
+            int count = 0;
+
+            try
             {
-                int count = 0;
+                var order = new Order(100);
+                var message1 = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(order));
 
-                try
-                {
-                    for (int i = 0; i < qnt; i++)
-                    {
-                        string message = $"OrderNumber: {count++} de {publisherName}";
-                        var body = Encoding.UTF8.GetBytes(message);
+                channel.BasicPublish("order", "order_new", null, message1);
 
-                        channel.BasicPublish("order", "", null, body);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    manualResetEvent.Set();
-                    //return BadRequest(ex);
-                }
-            });
+                order.Update("Novo nome");
+                var message2 = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(order));
+
+                channel.BasicPublish("order", "order_upd", null, message2);
+
+                //return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                manualResetEvent.Set();
+                //return Task.FromResult(ex);
+            }
         }
     }
 }
