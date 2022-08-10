@@ -46,6 +46,11 @@ namespace WebApiRabbitMQ.Controllers
         {
             var channel = connection.CreateModel();
 
+            channel.ConfirmSelect();
+
+            channel.BasicAcks += Channel_BasickAks;
+            channel.BasicNacks += Channel_BasicNaks;
+
             channel.QueueDeclare(queue: "order", durable: false, exclusive: false, autoDelete: false, arguments: null);
             channel.QueueDeclare(queue: "finance_order", durable: false, exclusive: false, autoDelete: false, arguments: null);
 
@@ -56,6 +61,15 @@ namespace WebApiRabbitMQ.Controllers
             channel.QueueBind("finance_order", "order", "order_new");
 
             return channel;
+        }
+
+        private void Channel_BasicNaks(object sender, RabbitMQ.Client.Events.BasicNackEventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+        private void Channel_BasickAks(object sender, RabbitMQ.Client.Events.BasicAckEventArgs e)
+        {
+            throw new Exception();
         }
 
         private async Task BuildPublishers(IModel channel, string queue, string publisherName, ManualResetEvent manualResetEvent)
