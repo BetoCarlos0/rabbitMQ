@@ -13,15 +13,17 @@ namespace Receive
             
             var channel = CreateChannel(connection);
 
-            channel.QueueDeclare(queue: "orderQueue",
+            var queueName = "order";
+
+            channel.QueueDeclare(queue: queueName,
                                     durable: false,
                                     exclusive: false,
                                     autoDelete: false,
                                     arguments: null);
 
 
-            BuildWorker(channel, $"Worker A");
-            BuildWorker(channel, $"Worker B");
+            BuildWorker(channel, $"Worker A", queueName);
+            BuildWorker(channel, $"Worker B", queueName);
 
             Console.ReadLine();            
         }
@@ -32,8 +34,10 @@ namespace Receive
             return channel;
         }
 
-        public static void BuildWorker(IModel channel, string workerName)
+        public static void BuildWorker(IModel channel, string workerName, string queueName)
         {
+            //channel.BasicQos(0, 1, false);
+
             var consumer = new EventingBasicConsumer(channel);
             consumer.Received += (model, ea) =>
             {
@@ -42,7 +46,7 @@ namespace Receive
                     var body = ea.Body.ToArray();
                     var message = Encoding.UTF8.GetString(body);
 
-                    Console.WriteLine($"channel: {channel.ChannelNumber} - {workerName}: Received {message}");
+                    Console.WriteLine($"channel: {channel.ChannelNumber} - {workerName}, {queueName}: Received {message}");
 
                     channel.BasicAck(ea.DeliveryTag, false);
                 }
@@ -51,7 +55,7 @@ namespace Receive
                     channel.BasicNack(ea.DeliveryTag, false, true);
                 }
             };
-            channel.BasicConsume(queue: "orderQueue",
+            channel.BasicConsume(queue: queueName,
                                             autoAck: false,
                                             consumer: consumer);
 

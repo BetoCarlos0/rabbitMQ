@@ -17,14 +17,14 @@ namespace WebApiRabbitMQ.Controllers
     {
 
         [HttpPost("{qnt}")]
-        public IActionResult InsertOrder(int qnt)
+        public async Task<IActionResult> InsertOrder(int qnt)
         {
-            Publisher(qnt);
+            await Publisher(qnt);
 
             return Ok();
         }
 
-        private void Publisher(int qnt)
+        private Task Publisher(int qnt)
         {
             var factory = new ConnectionFactory() { HostName = "localhost" };
             var manualResetevent = new ManualResetEvent(false);
@@ -34,18 +34,27 @@ namespace WebApiRabbitMQ.Controllers
             using var connection = factory.CreateConnection();
             var queueName = "orderQueue";
 
-            var channel1 = CreateChannel(connection, queueName);
+            var channel1 = SetupChannel(connection);
             BuildPublishers(qnt, channel1, queueName, "Produtor A", manualResetevent);
 
             //manualResetevent.WaitOne();
+            return Task.CompletedTask;
         }
 
         // -- services
-        private IModel CreateChannel(IConnection connection, string queueName)
+        private IModel SetupChannel(IConnection connection)
         {
             var channel = connection.CreateModel();
 
-            channel.QueueDeclare(queue: queueName, durable: false, exclusive: false, autoDelete: false, arguments: null);
+            channel.QueueDeclare(queue: "order", durable: false, exclusive: false, autoDelete: false, arguments: null);
+            channel.QueueDeclare(queue: "logs", durable: false, exclusive: false, autoDelete: false, arguments: null);
+            channel.QueueDeclare(queue: "finance_order", durable: false, exclusive: false, autoDelete: false, arguments: null);
+
+            channel.ExchangeDeclare("order", "fanout");
+
+            channel.QueueBind("order", "order", "");
+            channel.QueueBind("logs", "order", "");
+            channel.QueueBind("finance_order", "order", "");
 
             return channel;
         }
@@ -63,7 +72,7 @@ namespace WebApiRabbitMQ.Controllers
                         string message = $"OrderNumber: {count++} de {publisherName}";
                         var body = Encoding.UTF8.GetBytes(message);
 
-                        channel.BasicPublish("", queue, null, body);
+                        channel.BasicPublish("order", "", null, body);
                     }
                 }
                 catch (Exception ex)
